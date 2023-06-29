@@ -12,21 +12,22 @@
         <script type="text/javascript" src="/js/multitrack-bronyru.js"></script>
     </head>
     <body class="body">
-        <div class="background"></div>
-        <div class="footer">
-            <div id="user">Выполнен вход как:</div>
-            <div id="token">Скопировать токен</div>
-            <a id="export" href="/api/confirmed" target="_blank">Экспортировать список</a>
-            <div id="restart">Перезагрузить сервер</div>
-            <div id="logout">Выйти</div>
-        </div>
-        <hr>
-        <div class="content">
+        <div class="background">
+            <div class="footer">
+                <div id="user">Выполнен вход как:</div>
+                <div id="token">Скопировать токен</div>
+                <a id="export" href="/api/confirmed" target="_blank">Экспортировать список</a>
+                <div id="restart">Перезагрузить сервер</div>
+                <div id="logout">Выйти</div>
+            </div>
             <hr>
-            <div id="confirmed"></div>
-            <hr>
-            <div id="temp"></div>
-            <hr>
+            <div class="content">
+                <hr>
+                <div id="confirmed"></div>
+                <hr>
+                <div id="temp"></div>
+                <hr>
+            </div>
         </div>
         <script>
             admin_load();
