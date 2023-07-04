@@ -25,6 +25,8 @@ APP, LEVELS = Flask(import_name=__name__), {"DEBUG": 0x0000FF,
 APP.wsgi_app = ProxyFix(app=APP.wsgi_app)
 TIME = str(datetime.now(tz=timezone(zone="Europe/Moscow")))[:-13].replace(" ", "_").replace("-", "_").replace(":", "_")
 ADMINS = {}
+TOKENS = [sha256((x + ADMINS[x]).encode(encoding="UTF-8",
+                                        errors="ignore")).hexdigest() for x in ADMINS]
 
 
 async def logs(level, message, file=None):
@@ -99,13 +101,35 @@ async def autores():
                    message=format_exc())
 
 
+async def db_sort(db, item, trigger):
+    try:
+        temp = []
+
+        for item_2 in db[item]["temp"]:
+            users = db[item]["temp"][item_2]["users"]
+
+            if len(users) >= 5 or "84.39.241.206" in users:
+                trigger = True
+                db[item]["confirmed"].update({item_2: db[item]["temp"][item_2]})
+                temp.append(item_2)
+
+        for item_3 in temp:
+            db[item]["temp"].pop(item_3)
+
+        return db, trigger
+    except Exception:
+        await logs(level="ERROR",
+                   message=format_exc())
+
+
 @APP.route(rule="/")
 async def url_home():
     try:
-        with open(file="www/html/services/index.html",
-                  mode="r",
-                  encoding="UTF-8") as index_html:
-            return render_template_string(source=index_html.read())
+        if request.method == "GET":
+            with open(file="www/html/services/index.html",
+                      mode="r",
+                      encoding="UTF-8") as index_html:
+                return render_template_string(source=index_html.read())
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -115,7 +139,8 @@ async def url_home():
 @APP.route(rule="/css/<path:file>")
 async def url_css(file):
     try:
-        return send_file(path_or_file=f"www/css/{file}")
+        if request.method == "GET":
+            return send_file(path_or_file=f"www/css/{file}")
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -125,7 +150,8 @@ async def url_css(file):
 @APP.route(rule="/fonts/<path:file>")
 async def url_fonts(file):
     try:
-        return send_file(path_or_file=f"www/fonts/{file}")
+        if request.method == "GET":
+            return send_file(path_or_file=f"www/fonts/{file}")
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -135,7 +161,8 @@ async def url_fonts(file):
 @APP.route(rule="/images/<path:file>")
 async def url_images(file):
     try:
-        return send_file(path_or_file=f"www/images/{file}")
+        if request.method == "GET":
+            return send_file(path_or_file=f"www/images/{file}")
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -145,7 +172,8 @@ async def url_images(file):
 @APP.route(rule="/js/<path:file>")
 async def url_js(file):
     try:
-        return send_file(path_or_file=f"www/js/{file}")
+        if request.method == "GET":
+            return send_file(path_or_file=f"www/js/{file}")
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -155,22 +183,22 @@ async def url_js(file):
 @APP.route(rule="/admin")
 async def url_admin():
     try:
-        if "token" in request.args:
-            token = request.args["token"]
-        else:
-            token = request.cookies.get("sts_token")
+        if request.method == "GET":
+            if "token" in request.args:
+                token = request.args["token"]
+            else:
+                token = request.cookies.get("sts_token")
 
-        if token in [sha256((x + ADMINS[x]).encode(encoding="UTF-8",
-                                                   errors="ignore")).hexdigest() for x in ADMINS]:
-            with open(file=f"www/html/admins/admin.html",
-                      mode="r",
-                      encoding="UTF-8") as admin_html:
-                return render_template_string(source=admin_html.read())
-        else:
-            with open(file=f"www/html/admins/login.html",
-                      mode="r",
-                      encoding="UTF-8") as login_html:
-                return render_template_string(source=login_html.read())
+            if token in TOKENS:
+                with open(file=f"www/html/admins/admin.html",
+                          mode="r",
+                          encoding="UTF-8") as admin_html:
+                    return render_template_string(source=admin_html.read())
+            else:
+                with open(file=f"www/html/admins/login.html",
+                          mode="r",
+                          encoding="UTF-8") as login_html:
+                    return render_template_string(source=login_html.read())
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -180,55 +208,58 @@ async def url_admin():
 @APP.route(rule="/api/add")
 async def url_api_add():
     try:
-        url, start, end = request.args["id"], request.args["start"], request.args["end"]
+        if request.method == "GET":
+            url, start, end = request.args["id"], request.args["start"], request.args["end"]
 
-        with open(file="db/db.json",
-                  mode="r",
-                  encoding="UTF-8") as db_json:
-            db = loads(s=db_json.read())
-
-            if url not in db:
-                db.update({url: {"confirmed": {},
-                                 "temp": {}}})
-
-            for item_1 in db[url]["confirmed"]:
-                if item_1 in [start, str(int(start) + 1), str(int(start) - 1)]:
-                    if db[url]["confirmed"][item_1]["end"] in [end, str(int(end) + 1), str(int(end) - 1)]:
-                        if request.remote_addr not in db[url]["confirmed"][item_1]["users"]:
-                            db[url]["confirmed"][item_1]["users"].append(request.remote_addr)
-                            with open(file="db/db.json",
-                                      mode="w",
-                                      encoding="UTF-8") as db_json_2:
-                                dump(obj=db,
-                                     fp=db_json_2,
-                                     indent=4,
-                                     ensure_ascii=False)
-                        return "1125"
-
-            for item_2 in db[url]["temp"]:
-                if item_2 in [start, str(int(start) + 1), str(int(start) - 1)]:
-                    if db[url]["temp"][item_2]["end"] in [end, str(int(end) + 1), str(int(end) - 1)]:
-                        if request.remote_addr not in db[url]["temp"][item_2]["users"]:
-                            db[url]["temp"][item_2]["users"].append(request.remote_addr)
-                            with open(file="db/db.json",
-                                      mode="w",
-                                      encoding="UTF-8") as db_json_3:
-                                dump(obj=db,
-                                     fp=db_json_3,
-                                     indent=4,
-                                     ensure_ascii=False)
-                        return "1125"
-
-            db[url]["temp"].update({start: {"end": end,
-                                            "users": [request.remote_addr]}})
             with open(file="db/db.json",
-                      mode="w",
-                      encoding="UTF-8") as db_json_4:
-                dump(obj=db,
-                     fp=db_json_4,
-                     indent=4,
-                     ensure_ascii=False)
-            return "1125"
+                      mode="r",
+                      encoding="UTF-8") as db_json:
+                db = loads(s=db_json.read())
+
+                if url not in db:
+                    db.update({url: {"confirmed": {},
+                                     "temp": {}}})
+
+                for item_1 in db[url]["confirmed"]:
+                    if item_1 in [start, str(int(start) + 1), str(int(start) - 1)]:
+                        if db[url]["confirmed"][item_1]["end"] in [end, str(int(end) + 1), str(int(end) - 1)]:
+                            if request.remote_addr not in db[url]["confirmed"][item_1]["users"]:
+                                db[url]["confirmed"][item_1]["users"].append(request.remote_addr)
+
+                                with open(file="db/db.json",
+                                          mode="w",
+                                          encoding="UTF-8") as db_json_2:
+                                    dump(obj=db,
+                                         fp=db_json_2,
+                                         indent=4,
+                                         ensure_ascii=False)
+                            return "1125"
+
+                for item_2 in db[url]["temp"]:
+                    if item_2 in [start, str(int(start) + 1), str(int(start) - 1)]:
+                        if db[url]["temp"][item_2]["end"] in [end, str(int(end) + 1), str(int(end) - 1)]:
+                            if request.remote_addr not in db[url]["temp"][item_2]["users"]:
+                                db[url]["temp"][item_2]["users"].append(request.remote_addr)
+
+                                with open(file="db/db.json",
+                                          mode="w",
+                                          encoding="UTF-8") as db_json_3:
+                                    dump(obj=db,
+                                         fp=db_json_3,
+                                         indent=4,
+                                         ensure_ascii=False)
+                            return "1125"
+
+                db[url]["temp"].update({start: {"end": end,
+                                                "users": [request.remote_addr]}})
+                with open(file="db/db.json",
+                          mode="w",
+                          encoding="UTF-8") as db_json_4:
+                    dump(obj=db,
+                         fp=db_json_4,
+                         indent=4,
+                         ensure_ascii=False)
+                return "1125"
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -238,7 +269,8 @@ async def url_api_add():
 @APP.route(rule="/api/time")
 async def url_api_time():
     try:
-        return str(datetime.now(tz=timezone(zone="Europe/Moscow")))[:-13]
+        if request.method == "GET":
+            return str(datetime.now(tz=timezone(zone="Europe/Moscow")))[:-13]
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -248,43 +280,37 @@ async def url_api_time():
 @APP.route(rule="/api/confirmed")
 async def url_api_confirmed():
     try:
-        trigger = False
+        if request.method == "GET":
+            trigger = False
 
-        with open(file="db/db.json",
-                  mode="r",
-                  encoding="UTF-8") as db_json:
-            db, output = loads(s=db_json.read()), {}
+            with open(file="db/db.json",
+                      mode="r",
+                      encoding="UTF-8") as db_json:
+                db, output = loads(s=db_json.read()), {}
 
-            for item in db:
-                temp = []
-                for item_2 in db[item]["temp"]:
-                    users = db[item]["temp"][item_2]["users"]
-                    if len(users) >= 5 or "84.39.241.206" in users:
-                        trigger = True
-                        db[item]["confirmed"].update({item_2: db[item]["temp"][item_2]})
-                        temp.append(item_2)
+                for item in db:
+                    db, trigger = await db_sort(db=db, item=item, trigger=trigger)
 
-                for item_3 in temp:
-                    db[item]["temp"].pop(item_3)
+                    if len(db[item]["confirmed"]) > 0:
+                        temp = []
 
-                if len(db[item]["confirmed"]) > 0:
-                    t = []
-                    for item_4 in db[item]["confirmed"]:
-                        t.append([int(item_4), int(db[item]["confirmed"][item_4]["end"])])
-                    output.update({item: t})
+                        for item_2 in db[item]["confirmed"]:
+                            temp.append([int(item_2), int(db[item]["confirmed"][item_2]["end"])])
 
-            if trigger:
-                with open(file="db/db.json",
-                          mode="w",
-                          encoding="UTF-8") as db_json_2:
-                    dump(obj=db,
-                         fp=db_json_2,
-                         indent=4,
-                         ensure_ascii=False)
+                        output.update({item: temp})
 
-            return dumps(obj=dict(natsorted(output.items(),
-                                            alg=ns.IGNORECASE)),
-                         ensure_ascii=False)
+                if trigger:
+                    with open(file="db/db.json",
+                              mode="w",
+                              encoding="UTF-8") as db_json_2:
+                        dump(obj=db,
+                             fp=db_json_2,
+                             indent=4,
+                             ensure_ascii=False)
+
+                return dumps(obj=dict(natsorted(output.items(),
+                                                alg=ns.IGNORECASE)),
+                             ensure_ascii=False)
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -294,43 +320,37 @@ async def url_api_confirmed():
 @APP.route(rule="/api/temp")
 async def url_api_temp():
     try:
-        trigger = False
+        if request.method == "GET":
+            trigger = False
 
-        with open(file="db/db.json",
-                  mode="r",
-                  encoding="UTF-8") as db_json:
-            db, output = loads(s=db_json.read()), {}
+            with open(file="db/db.json",
+                      mode="r",
+                      encoding="UTF-8") as db_json:
+                db, output = loads(s=db_json.read()), {}
 
-            for item in db:
-                temp = []
-                for item_2 in db[item]["temp"]:
-                    users = db[item]["temp"][item_2]["users"]
-                    if len(users) >= 5 or "84.39.241.206" in users:
-                        trigger = True
-                        db[item]["confirmed"].update({item_2: db[item]["temp"][item_2]})
-                        temp.append(item_2)
+                for item in db:
+                    db, trigger = await db_sort(db=db, item=item, trigger=trigger)
 
-                for item_3 in temp:
-                    db[item]["temp"].pop(item_3)
+                    if len(db[item]["temp"]) > 0:
+                        temp = []
 
-                if len(db[item]["temp"]) > 0:
-                    t = []
-                    for item_4 in db[item]["temp"]:
-                        t.append([int(item_4), int(db[item]["temp"][item_4]["end"])])
-                    output.update({item: t})
+                        for item_2 in db[item]["temp"]:
+                            temp.append([int(item_2), int(db[item]["temp"][item_2]["end"])])
 
-            if trigger:
-                with open(file="db/db.json",
-                          mode="w",
-                          encoding="UTF-8") as db_json_2:
-                    dump(obj=db,
-                         fp=db_json_2,
-                         indent=4,
-                         ensure_ascii=False)
+                        output.update({item: temp})
 
-            return dumps(obj=dict(natsorted(output.items(),
-                                            alg=ns.IGNORECASE)),
-                         ensure_ascii=False)
+                if trigger:
+                    with open(file="db/db.json",
+                              mode="w",
+                              encoding="UTF-8") as db_json_2:
+                        dump(obj=db,
+                             fp=db_json_2,
+                             indent=4,
+                             ensure_ascii=False)
+
+                return dumps(obj=dict(natsorted(output.items(),
+                                                alg=ns.IGNORECASE)),
+                             ensure_ascii=False)
     except Exception:
         await logs(level="ERROR",
                    message=format_exc())
@@ -340,23 +360,23 @@ async def url_api_temp():
 @APP.route(rule="/api/admin/auth")
 async def url_api_admin_auth():
     try:
-        try:
-            password = sha256(request.args["password"].encode(encoding="UTF-8",
-                                                              errors="ignore")).hexdigest()
-            token = sha256((request.args["login"] + password).encode(encoding="UTF-8",
-                                                                     errors="ignore")).hexdigest()
-        except Exception:
-            raise Exception
+        if request.method == "GET":
+            try:
+                password = sha256(request.args["password"].encode(encoding="UTF-8",
+                                                                  errors="ignore")).hexdigest()
+                token = sha256((request.args["login"] + password).encode(encoding="UTF-8",
+                                                                         errors="ignore")).hexdigest()
+            except Exception:
+                raise Exception
 
-        if token in [sha256((x + ADMINS[x]).encode(encoding="UTF-8",
-                                                   errors="ignore")).hexdigest() for x in ADMINS]:
-            response = make_response({"user": request.args["login"],
-                                      "token": token})
-            response.set_cookie("sts_token", token)
+            if token in TOKENS:
+                response = make_response({"user": request.args["login"],
+                                          "token": token})
+                response.set_cookie("sts_token", token)
 
-            return response
-        else:
-            raise HTTPException
+                return response
+            else:
+                raise HTTPException
     except HTTPException:
         return abort(code=401)
     except Exception:
@@ -368,23 +388,24 @@ async def url_api_admin_auth():
 @APP.route(rule="/api/admin/user")
 async def url_api_admin_user():
     try:
-        if "token" in request.args:
-            token = request.args["token"]
-        else:
-            token = request.cookies.get("sts_token")
+        if request.method == "GET":
+            if "token" in request.args:
+                token = request.args["token"]
+            else:
+                token = request.cookies.get("sts_token")
 
-        if token is None:
-            raise HTTPException
+            if token is None:
+                raise HTTPException
 
-        try:
-            for admin in ADMINS:
-                if token == sha256((admin + ADMINS[admin]).encode(encoding="UTF-8",
-                                                                  errors="ignore")).hexdigest():
-                    return {"user": admin,
-                            "token": token}
-            raise Exception
-        except Exception:
-            raise Exception
+            try:
+                for admin in ADMINS:
+                    if token == sha256((admin + ADMINS[admin]).encode(encoding="UTF-8",
+                                                                      errors="ignore")).hexdigest():
+                        return {"user": admin,
+                                "token": token}
+                raise Exception
+            except Exception:
+                raise Exception
     except HTTPException:
         return abort(code=401)
     except Exception:
@@ -396,43 +417,43 @@ async def url_api_admin_user():
 @APP.route(rule="/api/admin/move")
 async def url_api_admin_move():
     try:
-        cats = {"confirmed": "temp",
-                "temp": "confirmed"}
+        if request.method == "GET":
+            cats = {"confirmed": "temp",
+                    "temp": "confirmed"}
 
-        if "token" in request.args:
-            token = request.args["token"]
-        else:
-            token = request.cookies.get("sts_token")
+            if "token" in request.args:
+                token = request.args["token"]
+            else:
+                token = request.cookies.get("sts_token")
 
-        if token is None or token not in [sha256((x + ADMINS[x]).encode(encoding="UTF-8",
-                                                                        errors="ignore")).hexdigest() for x in ADMINS]:
-            raise HTTPException
+            if token is None or token not in TOKENS:
+                raise HTTPException
 
-        try:
-            url, cat, start = request.args["id"], request.args["cat"], request.args["start"]
+            try:
+                url, cat, start = request.args["id"], request.args["cat"], request.args["start"]
 
-            print(url, cat, start)
-
-            with open(file="db/db.json",
-                      mode="r",
-                      encoding="UTF-8") as db_json:
-                db = loads(s=db_json.read())
-
-                db[url][cats[cat]].update({start: db[url][cat][start]})
-                db[url][cats[cat]][start]["users"] = []
-                db[url][cat].pop(start)
+                print(url, cat, start)
 
                 with open(file="db/db.json",
-                          mode="w",
-                          encoding="UTF-8") as db_json_2:
-                    dump(obj=db,
-                         fp=db_json_2,
-                         indent=4,
-                         ensure_ascii=False)
+                          mode="r",
+                          encoding="UTF-8") as db_json:
+                    db = loads(s=db_json.read())
 
-                return "1125"
-        except Exception:
-            raise Exception
+                    db[url][cats[cat]].update({start: db[url][cat][start]})
+                    db[url][cats[cat]][start]["users"] = []
+                    db[url][cat].pop(start)
+
+                    with open(file="db/db.json",
+                              mode="w",
+                              encoding="UTF-8") as db_json_2:
+                        dump(obj=db,
+                             fp=db_json_2,
+                             indent=4,
+                             ensure_ascii=False)
+
+                    return "1125"
+            except Exception:
+                raise Exception
     except HTTPException:
         return abort(code=401)
     except Exception:
@@ -444,36 +465,36 @@ async def url_api_admin_move():
 @APP.route(rule="/api/admin/del")
 async def url_api_admin_del():
     try:
-        if "token" in request.args:
-            token = request.args["token"]
-        else:
-            token = request.cookies.get("sts_token")
+        if request.method == "GET":
+            if "token" in request.args:
+                token = request.args["token"]
+            else:
+                token = request.cookies.get("sts_token")
 
-        if token is None or token not in [sha256((x + ADMINS[x]).encode(encoding="UTF-8",
-                                                                        errors="ignore")).hexdigest() for x in ADMINS]:
-            raise HTTPException
+            if token is None or token not in TOKENS:
+                raise HTTPException
 
-        try:
-            url, cat, start = request.args["id"], request.args["cat"], request.args["start"]
-
-            with open(file="db/db.json",
-                      mode="r",
-                      encoding="UTF-8") as db_json:
-                db = loads(s=db_json.read())
-
-                db[url][cat].pop(start)
+            try:
+                url, cat, start = request.args["id"], request.args["cat"], request.args["start"]
 
                 with open(file="db/db.json",
-                          mode="w",
-                          encoding="UTF-8") as db_json_2:
-                    dump(obj=db,
-                         fp=db_json_2,
-                         indent=4,
-                         ensure_ascii=False)
+                          mode="r",
+                          encoding="UTF-8") as db_json:
+                    db = loads(s=db_json.read())
 
-                return "1125"
-        except Exception:
-            raise Exception
+                    db[url][cat].pop(start)
+
+                    with open(file="db/db.json",
+                              mode="w",
+                              encoding="UTF-8") as db_json_2:
+                        dump(obj=db,
+                             fp=db_json_2,
+                             indent=4,
+                             ensure_ascii=False)
+
+                    return "1125"
+            except Exception:
+                raise Exception
     except HTTPException:
         return abort(code=401)
     except Exception:
@@ -485,19 +506,19 @@ async def url_api_admin_del():
 @APP.route(rule="/api/admin/restart")
 async def url_api_admin_restart():
     try:
-        if "token" in request.args:
-            token = request.args["token"]
-        else:
-            token = request.cookies.get("sts_token")
+        if request.method == "GET":
+            if "token" in request.args:
+                token = request.args["token"]
+            else:
+                token = request.cookies.get("sts_token")
 
-        if token is None or token not in [sha256((x + ADMINS[x]).encode(encoding="UTF-8",
-                                                                        errors="ignore")).hexdigest() for x in ADMINS]:
-            raise HTTPException
+            if token is None or token not in TOKENS:
+                raise HTTPException
 
-        try:
-            await restart()
-        except Exception:
-            raise Exception
+            try:
+                await restart()
+            except Exception:
+                raise Exception
     except HTTPException:
         return abort(code=401)
     except Exception:
@@ -510,6 +531,7 @@ async def url_api_admin_restart():
 async def error_handler(error):
     try:
         print(error)
+
         with open(file=f"www/html/services/error.html",
                   mode="r",
                   encoding="UTF-8") as error_html:
@@ -524,6 +546,7 @@ async def error_handler(error):
 if __name__ == "__main__":
     try:
         run(main=autores())
+
         serve(app=APP,
               port=1126,
               threads=16)
