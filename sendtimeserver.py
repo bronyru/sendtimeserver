@@ -94,6 +94,24 @@ async def autores():
         if time == 0 or time == 120000:
             await backup()
 
+        if time == 0:
+            with open(file="db/stats.json",
+                      mode="r",
+                      encoding="UTF-8") as stats_json:
+                db = loads(s=stats_json.read())
+
+                db["old"] = {}
+                db["old"].update(db["new"])
+                db["new"] = {}
+
+                with open(file="db/stats.json",
+                          mode="w",
+                          encoding="UTF-8") as stats_json_2:
+                    dump(obj=db,
+                         fp=stats_json_2,
+                         indent=4,
+                         ensure_ascii=False)
+
         Timer(interval=1,
               function=partial(run, main=autores())).start()
     except Exception:
@@ -350,6 +368,75 @@ async def url_api_temp():
 
                 return dumps(obj=dict(natsorted(output.items(),
                                                 alg=ns.IGNORECASE)),
+                             ensure_ascii=False)
+    except Exception:
+        await logs(level="ERROR",
+                   message=format_exc())
+        return abort(code=500)
+
+
+@APP.route(rule="/api/stats/add")
+async def url_api_stats_add():
+    try:
+        if request.method == "GET":
+            url, name, title = request.args["id"], request.args["name"], request.args["title"]
+            placeholder = request.args["placeholder"]
+
+            if url != "/multitrack/dist/index.html":
+                with open(file="db/stats.json",
+                          mode="r",
+                          encoding="UTF-8") as stats_json:
+                    db = loads(s=stats_json.read())
+
+                    if url not in db["new"]:
+                        db["new"].update({url: {"name": name,
+                                                "title": title,
+                                                "placeholder": placeholder,
+                                                "views": "1"}})
+                    else:
+                        db["new"][url].update({"name": name,
+                                               "title": title,
+                                               "placeholder": placeholder,
+                                               "views": str(int(db["new"][url]["views"]) + 1)})
+
+                    with open(file="db/stats.json",
+                              mode="w",
+                              encoding="UTF-8") as stats_json_2:
+                        dump(obj=db,
+                             fp=stats_json_2,
+                             indent=4,
+                             ensure_ascii=False)
+                    return "1125"
+    except Exception:
+        await logs(level="ERROR",
+                   message=format_exc())
+        return abort(code=400)
+
+
+@APP.route(rule="/api/stats/top")
+async def url_api_stats_top():
+    try:
+        if request.method == "GET":
+            with open(file="db/stats.json",
+                      mode="r",
+                      encoding="UTF-8") as stats_json:
+                db, output = loads(s=stats_json.read()), {}
+
+                if len(db["new"]) >= 10:
+                    data = db["new"]
+                else:
+                    data = db["old"]
+
+                data_2 = dict(natsorted(data.items(),
+                                        key=lambda x: x[1]["views"],
+                                        reverse=True,
+                                        alg=ns.IGNORECASE))
+
+                for item in data_2:
+                    if len(output) < 20:
+                        output.update({item: data_2[item]})
+
+                return dumps(obj=output,
                              ensure_ascii=False)
     except Exception:
         await logs(level="ERROR",
